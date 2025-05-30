@@ -1,3 +1,6 @@
+import { AuthStackParamList } from "@/types";
+import { useNavigation } from "@react-navigation/native";
+import { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import React, { useState } from "react";
 import {
   ScrollView,
@@ -24,21 +27,32 @@ export const School = ({
   const [schoolDropdownOpen, setSchoolDropdownOpen] = useState(false);
 
   const countries = Object.keys(highSchools);
-  const regions = selectedCountry ? Object.keys(highSchools[selectedCountry]) : [];
+  const regions = selectedCountry ? Object.keys((highSchools as any)[selectedCountry as string]) : [];
   const schoolsInRegion =
     selectedCountry && selectedRegion
-      ? Object.entries(highSchools[selectedCountry][selectedRegion])
+      ? Object.entries((highSchools as any)[selectedCountry as string][selectedRegion as string])
       : [];
-
+      type AuthNav = NativeStackNavigationProp<AuthStackParamList>
+      const navigation = useNavigation<AuthNav>()
   const handleContinue = () => {
-    if (selectedCountry && selectedRegion && selectedSchool) {
+    try {
+
+      if (selectedCountry && selectedRegion && selectedSchool) {
       setSchool(selectedSchool);
       setCountry(selectedCountry);
       const curriculum =
-        highSchools[selectedCountry][selectedRegion][selectedSchool]?.curriculum || "";
+      (highSchools as any)[selectedCountry as string]?.[selectedRegion as string]?.[selectedSchool as string]?.curriculum || "";
       setCurriculum(curriculum);
     }
-  };
+      
+    } catch (error) {
+      console.log('The error was caught here')
+      
+    }finally{
+      console.log(selectedSchool)
+      navigation.navigate('Role')
+    }
+  }
 
   return (
     <ScrollView contentContainerStyle={styles.container}>
@@ -155,7 +169,7 @@ export const School = ({
                       {schoolName}
                       {"\n"}
                       <Text style={{ color: "#aaa", fontSize: 13 }}>
-                        {schoolObj.curriculum}
+                        {(schoolObj as { curriculum: string }).curriculum}
                       </Text>
                     </Text>
                   </TouchableOpacity>

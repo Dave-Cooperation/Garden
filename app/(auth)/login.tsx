@@ -1,62 +1,93 @@
-import { Ionicons } from '@expo/vector-icons'
-import { signInWithEmailAndPassword, signOut } from 'firebase/auth'
+import { signInWithEmailAndPassword } from 'firebase/auth'
 import React, { useEffect, useState } from 'react'
-import { ActivityIndicator, Alert, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native'
-import { auth } from '../../firebaseConfig'
+import {
+  ActivityIndicator,
+  Alert,
+  Image,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
+} from 'react-native'
+import { app, auth } from '../../firebaseConfig'
 
+import GoogleLogo from '@/assets/images/google.png'
+import { AuthStackParamList } from '@/types'
 import { showSuccessAlert } from '@/utils/showSuccessAlert'
 import AsyncStorage from '@react-native-async-storage/async-storage'
 import { useNavigation } from '@react-navigation/native'
-import type { NativeStackNavigationProp } from '@react-navigation/native-stack'
+import { NativeStackNavigationProp } from '@react-navigation/native-stack'
 import { useRouter } from 'expo-router'
-import type { AuthStackParamList } from '../../types'; // adjust if you placed it elsewhere
+import { doc, getDoc, getFirestore } from 'firebase/firestore'
 
-type AuthNav = NativeStackNavigationProp<AuthStackParamList>
 const Login = () => {
+  type AuthNav = NativeStackNavigationProp<AuthStackParamList>
+  const navigation = useNavigation<AuthNav>()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [loading, setLoading] = useState(false)
+  const [authLoading, setAuthLoading] = useState(true)
   const router = useRouter()
-  const navigation = useNavigation<AuthNav>()
 
   useEffect(() => {
+    const checkAuthAndProfile = async () => {
+      const storedUser = await AsyncStorage.getItem('user')
+      const storedProfile = await AsyncStorage.getItem('profile')
 
-  const clearUserSession = async () => {
-    setLoading(true)
-    try {
-      const user = await AsyncStorage.getItem('user')
-      if (user) {
-        await signOut(auth) // log out from Firebase
-        await AsyncStorage.removeItem('user') // clear user from AsyncStorage
-        console.log('Previous user signed out.')
+      if (storedUser && storedProfile) {
+        const parsedUser = JSON.parse(storedUser)
+        try {
+          await signInWithEmailAndPassword(auth, parsedUser.email, parsedUser.password)
+          router.push('/(tabs)')
+        } catch (err) {
+          console.error('Auto-login failed:', err)
+          setAuthLoading(false)
+        }
+      } else {
+        setAuthLoading(false)
       }
-    } catch (error) {
-      console.error('Error signing out previous user:', error)
     }
-    setLoading(false)
-  }
-
-  clearUserSession()
-}, [])
+    checkAuthAndProfile()
+  }, [])
 
   const handleLogin = async () => {
-    
-
     setLoading(true)
     try {
       const userCredential = await signInWithEmailAndPassword(auth, email, password)
       const { user } = userCredential
-      await AsyncStorage.setItem('user', JSON.stringify({
-        uid: user.uid,
-        email: user.email,
-      }))
-      navigation.navigate('School')
-      showSuccessAlert('Login Successful')
+      const userData = { uid: user.uid, email: user.email, password }
+
+      await AsyncStorage.setItem('user', JSON.stringify(userData))
+
+      const db = getFirestore(app)
+      if (!user.email) {
+        throw new Error('User email is missing')
+      }
+      const profileRef = doc(db, 'users', user.email, 'profile', 'details')
+      const profileSnap = await getDoc(profileRef)
+
+      if (profileSnap.exists()) {
+        await AsyncStorage.setItem('profile', JSON.stringify(profileSnap.data()))
+        showSuccessAlert('Login Successful')
+        router.push('/(tabs)')
+      } else {
+        await AsyncStorage.removeItem('profile')
+        navigation.navigate('NameAndPicture')
+      }
     } catch (error: any) {
       Alert.alert('Login Failed', error.message)
     } finally {
       setLoading(false)
     }
+  }
+
+  if (authLoading) {
+    return (
+      <View style={styles.container}>
+        <ActivityIndicator color="#fff" size={75} />
+      </View>
+    )
   }
 
   return (
@@ -88,11 +119,10 @@ const Login = () => {
       </TouchableOpacity>
 
       <TouchableOpacity style={styles.googleButton} disabled>
-        <Ionicons name='logo-google' size={24} style={{ paddingRight: 10 }} />
+        <Image source={GoogleLogo} style={styles.googleIcon} />
         <Text style={styles.googleButtonText}>Continue with Google</Text>
       </TouchableOpacity>
 
-      {/* Add this block below for sign-up link */}
       <View style={styles.footer}>
         <Text style={styles.footerText}>Don't have an account? </Text>
         <TouchableOpacity onPress={() => navigation.navigate('SignUp')}>
@@ -104,7 +134,6 @@ const Login = () => {
 }
 
 export default Login
-
 
 const styles = StyleSheet.create({
   container: {
@@ -156,22 +185,26 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#ddd',
   },
+  googleIcon: {
+    width: 32,
+    height: 32,
+    marginRight: 10,
+  },
   googleButtonText: {
     color: '#181A20',
     fontSize: 18,
     fontWeight: 'bold',
   },
   footer: {
-  flexDirection: 'row',
-  marginTop: 24,
-},
-footerText: {
-  color: '#ccc',
-  fontSize: 14,
-},
-footerLink: {
-  color: '#246bfd',
-  fontWeight: 'bold',
-}
-
+    flexDirection: 'row',
+    marginTop: 24,
+  },
+  footerText: {
+    color: '#ccc',
+    fontSize: 14,
+  },
+  footerLink: {
+    color: '#246bfd',
+    fontWeight: 'bold',
+  },
 })
